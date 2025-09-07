@@ -22,8 +22,15 @@ def get_seeds(
         seed = int(p.all_seeds[0])
         subseed = int(p.all_subseeds[0])
     else:
-        seed = int(p.seed)
-        subseed = int(p.subseed)
+        if isinstance(p.seed, list):
+            seed = int(p.seed[0]) if p.seed else -1
+        else:
+            seed = int(p.seed)
+
+        if isinstance(p.subseed, list):
+            subseed = int(p.subseed[0]) if p.subseed else -1
+        else:
+            subseed = int(p.subseed)
 
     if use_fixed_seed:
         if is_combinatorial:

@@ -13,31 +13,36 @@ Looking for ComfyUI nodes? Find them [here](https://github.com/adieyal/comfyui-d
 
 ## Table of Contents
 
-   * [Basic Usage](#basic-usage)
-   * [Online resources](#online-resources)
-   * [Installation](#installation)
-   * [Configuration](#configuration)
-   * [Troubleshooting](#troubleshooting)
-   * [Compatible Scripts](#compatible-scripts)
-   * [Template syntax](#template-syntax)
-      * [Fuzzy Glob/recursive wildcard file/directory matching](#fuzzy-globrecursive-wildcard-filedirectory-matching)
-   * [Combinatorial Generation](#combinatorial-generation)
-      * [Combinatorial Batches](#combinatorial-batches)
-      * [Increasing the maximum number of generations](#increasing-the-maximum-number-of-generations)
-   * [Fixed seed](#fixed-seed)
-   * [Magic Prompt](#magic-prompt)
-      * [Other models](#other-models)
-   * [I'm feeling lucky](#im-feeling-lucky)
-   * [Attention grabber](#attention-grabber)
-   * [Write prompts to file](#write-prompts-to-file)
-   * [Jinja2 templates](#jinja2-templates)
-   * [WILDCARD_DIR](#wildcard_dir)
-   * [Collections](#collections)
-   * [Dynamic Prompts and Random Seeds](#dynamic-prompts-and-random-seeds)
-      * [Without Dynamic Prompts Enabled](#without-dynamic-prompts-enabled)
-      * [With Dynamic Prompts Enabled in Random/Standard Mode](#with-dynamic-prompts-enabled-in-randomstandard-mode)
-      * [Variation Seeds with Dynamic Prompts](#variation-seeds-with-dynamic-prompts)
-      * [Combinatorial Mode with Variation Strength &gt; 0](#combinatorial-mode-with-variation-strength--0)
+- [Stable Diffusion Dynamic Prompts extension](#stable-diffusion-dynamic-prompts-extension)
+  - [Table of Contents](#table-of-contents)
+  - [Basic Usage](#basic-usage)
+  - [Online resources](#online-resources)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+    - [Changing syntax](#changing-syntax)
+    - [Wildcard settings](#wildcard-settings)
+    - [Save template to metadata](#save-template-to-metadata)
+  - [Troubleshooting](#troubleshooting)
+  - [Compatible Scripts](#compatible-scripts)
+  - [Template syntax](#template-syntax)
+    - [Fuzzy Glob/recursive wildcard file/directory matching](#fuzzy-globrecursive-wildcard-filedirectory-matching)
+  - [Combinatorial Generation](#combinatorial-generation)
+    - [Combinatorial Batches](#combinatorial-batches)
+    - [Increasing the maximum number of generations](#increasing-the-maximum-number-of-generations)
+  - [Fixed seed](#fixed-seed)
+  - [Magic Prompt](#magic-prompt)
+    - [Other models](#other-models)
+  - [I'm feeling lucky](#im-feeling-lucky)
+  - [Attention grabber](#attention-grabber)
+  - [Write prompts to file](#write-prompts-to-file)
+  - [Jinja2 templates](#jinja2-templates)
+  - [WILDCARD\_DIR](#wildcard_dir)
+  - [Collections](#collections)
+  - [Dynamic Prompts and Random Seeds](#dynamic-prompts-and-random-seeds)
+    - [Without Dynamic Prompts Enabled](#without-dynamic-prompts-enabled)
+    - [Using With Dynamic Prompts Enabled in Random/Standard Mode:](#using-with-dynamic-prompts-enabled-in-randomstandard-mode)
+    - [Variation Seeds with Dynamic Prompts](#variation-seeds-with-dynamic-prompts)
+    - [Combinatorial Mode with Variation Strength \> 0](#combinatorial-mode-with-variation-strength--0)
 
 
 ## Basic Usage
@@ -327,26 +332,30 @@ ln -sr collections/parrotzone wildcards/
 You can also download additional extensions by running `python _tools/download_collections.py` from within the extension's root directory, i.e. `extensions/sd-dynamic-prompts/`
 
 ## Dynamic Prompts and Random Seeds
+
 Random seeds play an important role in controlling the randomness of the generated outputs. Let's discuss how Dynamic Prompts works with random seeds in different scenarios.
+
+**重要な変更点:** 以前のバージョンで存在した `num_images_per_template` オプションは削除されました。現在、各プロンプトテンプレートからは常に1つの画像が生成されます。また、内部的に組み合わせ生成 (`is_combinatorial`) は無効化され、バッチ数 (`combinatorial_batches`) は1に固定されています。
 
 ### Without Dynamic Prompts Enabled
 
-1. If the seed is set to -1: A random seed is picked. This seed is used to generate the first image, then the next image is created using seed + 1, and this pattern continues for subsequent images.
-2. If the seed is set to a specific number greater than -1: The process is similar to the one above, but starts with the user-specified seed.
-3. If the variation seed is defined, but variation strength is zero: The process remains the same as in the previous two points.
-4. If the variation seed is set to a number greater than 0: Every image is generated using the same initial seed (randomly selected or set by the user). The variation seed is either random (if set to -1) or the value chosen by the user. The first image is generated with the variation seed, the next with variation seed + 1, and so on.
+1.  **シードが -1 に設定されている場合:** ランダムなシードが選択されます。このシードは最初の画像の生成に使用され、次の画像はシード + 1 を使用して作成され、このパターンが後続の画像でも続きます。
+2.  **シードが -1 より大きい特定の数値に設定されている場合:** 上記と同様のプロセスですが、ユーザーが指定したシードから開始されます。
+3.  **バリエーションシードが定義されているが、バリエーション強度 (variation strength) がゼロの場合:** 上記の2点と同様のプロセスが維持されます。
+4.  **バリエーションシードが 0 より大きい数値に設定されている場合:** すべての画像は同じ初期シード (ランダムに選択された、またはユーザーが設定したシード) を使用して生成されます。バリエーションシードはランダム ( -1 に設定されている場合) またはユーザーが選択した値です。最初の画像はバリエーションシードで生成され、次はバリエーションシード + 1 で生成されます。
 
 ### Using With Dynamic Prompts Enabled in Random/Standard Mode:
 
-1. If the seed is set to -1: The process is similar to the first point in the previous section. However, the prompt is also selected using the same seed (if the random prompt generator is used).
-2. If the seed is set to a number greater than -1: The process is similar to the second point in the previous section. However, the difference is that a random prompt is also generated using the chosen seed (if the prompt generator is used).
-3. If the fixed seed checkbox is checked: The same seed is used for all images and prompts. This means the same image is generated repeatedly (this is useful for combinatorial generation).
-4. If both the fixed seed and unlink seed from prompt checkboxes are checked: A random seed is used for the prompt, but the same seed is used for all images. This setting can be useful if you want to see how different prompts affect the generation of the same image.
+1.  **シードが -1 に設定されている場合:** 前のセクションの最初の点と同様のプロセスです。ただし、プロンプトも同じシードを使用して選択されます (ランダムプロンプトジェネレーターが使用される場合)。
+2.  **シードが -1 より大きい数値に設定されている場合:** 前のセクションの2番目の点と同様のプロセスです。ただし、プロンプトジェネレーターが使用される場合、選択されたシードを使用してランダムなプロンプトも生成される点が異なります。
+3.  **固定シード (fixed seed) チェックボックスがオンの場合:** すべての画像とプロンプトに同じシードが使用されます。これは、同じ画像が繰り返し生成されることを意味します (これは組み合わせ生成に役立ちます)。
+4.  **固定シード (fixed seed) とプロンプトからシードをリンク解除 (unlink seed from prompt) の両方のチェックボックスがオンの場合:** プロンプトにはランダムなシードが使用されますが、すべての画像には同じシードが使用されます。この設定は、異なるプロンプトが同じ画像の生成にどのように影響するかを確認したい場合に役立ちます。
 
 ### Variation Seeds with Dynamic Prompts
 
-1. Variation strength set to 0: Variations are ignored.
-2. Variation set to a number > 0: A variation seed is assigned to every image, incrementing by one each time. However, only 1 prompt is generated since you are looking for variations of the same image.
+1.  **バリエーション強度 (Variation strength) が 0 に設定されている場合:** バリエーションは無視されます。
+2.  **バリエーション強度 (Variation strength) が 0 より大きい数値に設定されている場合:** 各画像にバリエーションシードが割り当てられ、毎回1ずつ増加します。ただし、同じ画像のバリエーションを探しているため、生成されるプロンプトは1つだけです。
 
 ### Combinatorial Mode with Variation Strength > 0
-In this case, it only generates the first image for you, which is probably not what you want. To get the desired results, you might need to adjust the settings or use a different mode.
+
+この場合、最初の画像のみが生成されます。これはおそらく意図した結果ではないため、設定を調整するか、別のモードを使用する必要があるかもしれません。

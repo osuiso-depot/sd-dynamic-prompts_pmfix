@@ -442,22 +442,22 @@ class Script(scripts.Script):
         all_generated_hr_prompts = []
         all_generated_hr_negative_prompts = []
 
-        total_num_prompts = len(original_prompts_list) * (num_images_per_template if num_images_per_template is not None else 1)
+        total_num_prompts = len(original_prompts_list)
 
         if total_num_prompts > 0 and not unlink_seed_from_prompt:
             p.all_seeds, p.all_subseeds = get_seeds(
                 p,
                 total_num_prompts,
                 use_fixed_seed,
-                is_combinatorial,
-                combinatorial_batches,
+                False, # is_combinatorial を False に設定
+                1, # combinatorial_batches を 1 に設定
             )
             all_seeds_for_generators = p.all_seeds
         else:
             all_seeds_for_generators = [original_seed] * total_num_prompts if total_num_prompts > 0 else []
 
         for i, original_p_template in enumerate(original_prompts_list):
-            current_seed = all_seeds_for_generators[i * (num_images_per_template if num_images_per_template is not None else 1)] if all_seeds_for_generators else original_seed
+            current_seed = all_seeds_for_generators[i] if all_seeds_for_generators else original_seed
 
             try:
                 logger.debug(f"Creating generator for prompt template: {original_p_template}")
@@ -478,7 +478,7 @@ class Script(scripts.Script):
                         enable_jinja_templates,
                         limit_prompts=self._limit_jinja_prompts,
                     )
-                    .set_is_combinatorial(is_combinatorial, combinatorial_batches)
+                    .set_is_combinatorial(False, 1) # is_combinatorial を False, combinatorial_batches を 1 に設定
                     .set_is_magic_prompt(
                         is_magic_prompt=is_magic_prompt,
                         magic_model=magic_model,
@@ -508,8 +508,8 @@ class Script(scripts.Script):
                     negative_prompt_generator=negative_generator,
                     prompt=original_p_template,
                     negative_prompt=original_negative_prompts_list[i] if i < len(original_negative_prompts_list) else None,
-                    num_prompts=num_images_per_template,
-                    seeds=all_seeds_for_generators[i * (num_images_per_template if num_images_per_template is not None else 1) : (i + 1) * (num_images_per_template if num_images_per_template is not None else 1)] if all_seeds_for_generators else None,
+                    num_prompts=1, # ここを 1 に変更
+                    seeds=[current_seed] if current_seed is not None else None, # シードを単一のリストとして渡す
                 )
                 all_generated_prompts.extend(current_prompts)
                 all_generated_negative_prompts.extend(current_negative_prompts)
