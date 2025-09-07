@@ -1,5 +1,6 @@
 # fork版: Stable Diffusion Dynamic Prompts extension
 * このバージョンでは、Stable Diffusion Dynamic Prompts extension使用時に「Prompt matrix」でエラーが出ないように修正しました。
+* prompt matrix非使用時のwildcard処理は問題ないはずですが、内部組み合わせ生成処理が機能しなくなっている可能性があります。
 
 ## Dynamic Prompts and Random Seeds
 
