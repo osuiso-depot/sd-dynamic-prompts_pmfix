@@ -388,113 +388,158 @@ class Script(scripts.Script):
         fix_seed(p)
 
         # Save original prompts before we touch `p.prompt`/`p.hr_prompt` etc.
-        original_prompt = _get_effective_prompt(p.all_prompts, p.prompt)
-        original_negative_prompt = _get_effective_prompt(
-            p.all_negative_prompts,
-            p.negative_prompt,
-        )
+        original_prompts_list = []
+        original_negative_prompts_list = []
+
+        if isinstance(p.prompt, list):
+            original_prompts_list = p.prompt
+            if isinstance(p.negative_prompt, list):
+                original_negative_prompts_list = p.negative_prompt
+            else:
+                original_negative_prompts_list = [p.negative_prompt] * len(p.prompt)
+        else:
+            original_prompts_list = [_get_effective_prompt(p.all_prompts, p.prompt)]
+            original_negative_prompts_list = [_get_effective_prompt(p.all_negative_prompts, p.negative_prompt)]
+
         hr_fix_enabled = getattr(p, "enable_hr", False)
 
         # all_hr_prompts (and the other hr prompt related stuff)
         # is only available in AUTOMATIC1111 1.3.0+, but might not be in forks.
         # Assume that if all_hr_prompts is available, the other hr prompt related stuff is too.
+        original_hr_prompts_list = []
+        original_negative_hr_prompts_list = []
+
         if hr_fix_enabled and hasattr(p, "all_hr_prompts"):
-            original_hr_prompt = _get_effective_prompt(p.all_hr_prompts, p.hr_prompt)
-            original_negative_hr_prompt = _get_effective_prompt(
-                p.all_hr_negative_prompts,
-                p.hr_negative_prompt,
-            )
+            if isinstance(p.hr_prompt, list):
+                original_hr_prompts_list = p.hr_prompt
+                if isinstance(p.hr_negative_prompt, list):
+                    original_negative_hr_prompts_list = p.hr_negative_prompt
+                else:
+                    original_negative_hr_prompts_list = [p.hr_negative_prompt] * len(p.hr_prompt)
+            else:
+                original_hr_prompts_list = [_get_effective_prompt(p.all_hr_prompts, p.hr_prompt)]
+                original_negative_hr_prompts_list = [_get_effective_prompt(p.all_hr_negative_prompts, p.hr_negative_prompt)]
         else:
             # If hr fix is not enabled, the HR prompts are effectively the same as the normal prompts
-            original_hr_prompt = original_prompt
-            original_negative_hr_prompt = original_negative_prompt
+            original_hr_prompts_list = original_prompts_list
+            original_negative_hr_prompts_list = original_negative_prompts_list
 
         original_seed = p.seed
-        num_images = p.n_iter * p.batch_size
+        num_images_per_template = p.n_iter * p.batch_size
 
         if is_combinatorial:
             if max_generations == 0:
-                num_images = None
+                num_images_per_template = None
             else:
-                num_images = max_generations
+                num_images_per_template = max_generations
 
         combinatorial_batches = int(combinatorial_batches)
         if self._auto_purge_cache:
             self._wildcard_manager.clear_cache()
 
-        try:
-            logger.debug("Creating generator")
+        all_generated_prompts = []
+        all_generated_negative_prompts = []
+        all_generated_hr_prompts = []
+        all_generated_hr_negative_prompts = []
 
-            generator_builder = (
-                GeneratorBuilder(
-                    self._wildcard_manager,
-                    ignore_whitespace=ignore_whitespace,
-                    parser_config=parser_config,
-                )
-                .set_is_feeling_lucky(is_feeling_lucky)
-                .set_is_attention_grabber(
-                    is_attention_grabber,
-                    min_attention,
-                    max_attention,
-                )
-                .set_is_jinja_template(
-                    enable_jinja_templates,
-                    limit_prompts=self._limit_jinja_prompts,
-                )
-                .set_is_combinatorial(is_combinatorial, combinatorial_batches)
-                .set_is_magic_prompt(
-                    is_magic_prompt=is_magic_prompt,
-                    magic_model=magic_model,
-                    magic_prompt_length=magic_prompt_length,
-                    magic_temp_value=magic_temp_value,
-                    magic_blocklist_regex=magic_blocklist_regex,
-                    batch_size=magicprompt_batch_size,
-                    device=get_magic_prompt_device(),
-                )
-                .set_is_dummy(False)
-                .set_unlink_seed_from_prompt(unlink_seed_from_prompt)
-                .set_seed(original_seed)
-                .set_context(p)
-                .set_freeze_prompt(should_freeze_prompt(p))
+        total_num_prompts = len(original_prompts_list) * (num_images_per_template if num_images_per_template is not None else 1)
+
+        if total_num_prompts > 0 and not unlink_seed_from_prompt:
+            p.all_seeds, p.all_subseeds = get_seeds(
+                p,
+                total_num_prompts,
+                use_fixed_seed,
+                is_combinatorial,
+                combinatorial_batches,
             )
+            all_seeds_for_generators = p.all_seeds
+        else:
+            all_seeds_for_generators = [original_seed] * total_num_prompts if total_num_prompts > 0 else []
 
-            generator = generator_builder.create_generator()
+        for i, original_p_template in enumerate(original_prompts_list):
+            current_seed = all_seeds_for_generators[i * (num_images_per_template if num_images_per_template is not None else 1)] if all_seeds_for_generators else original_seed
 
-            if disable_negative_prompt:
-                generator_builder.disable_prompt_magic()
-                negative_generator = generator_builder.create_generator()
-            else:
-                negative_generator = generator
+            try:
+                logger.debug(f"Creating generator for prompt template: {original_p_template}")
 
-            all_seeds = None
-            if num_images and not unlink_seed_from_prompt:
-                p.all_seeds, p.all_subseeds = get_seeds(
-                    p,
-                    num_images,
-                    use_fixed_seed,
-                    is_combinatorial,
-                    combinatorial_batches,
+                generator_builder = (
+                    GeneratorBuilder(
+                        self._wildcard_manager,
+                        ignore_whitespace=ignore_whitespace,
+                        parser_config=parser_config,
+                    )
+                    .set_is_feeling_lucky(is_feeling_lucky)
+                    .set_is_attention_grabber(
+                        is_attention_grabber,
+                        min_attention,
+                        max_attention,
+                    )
+                    .set_is_jinja_template(
+                        enable_jinja_templates,
+                        limit_prompts=self._limit_jinja_prompts,
+                    )
+                    .set_is_combinatorial(is_combinatorial, combinatorial_batches)
+                    .set_is_magic_prompt(
+                        is_magic_prompt=is_magic_prompt,
+                        magic_model=magic_model,
+                        magic_prompt_length=magic_prompt_length,
+                        magic_temp_value=magic_temp_value,
+                        magic_blocklist_regex=magic_blocklist_regex,
+                        batch_size=magicprompt_batch_size,
+                        device=get_magic_prompt_device(),
+                    )
+                    .set_is_dummy(False)
+                    .set_unlink_seed_from_prompt(unlink_seed_from_prompt)
+                    .set_seed(current_seed)
+                    .set_context(p)
+                    .set_freeze_prompt(should_freeze_prompt(p))
                 )
-                all_seeds = p.all_seeds
 
-            all_prompts, all_negative_prompts = generate_prompts(
-                prompt_generator=generator,
-                negative_prompt_generator=negative_generator,
-                prompt=original_prompt,
-                negative_prompt=original_negative_prompt,
-                num_prompts=num_images,
-                seeds=all_seeds,
-            )
+                generator = generator_builder.create_generator()
 
-        except GeneratorException as e:
-            logger.exception(e)
-            all_prompts = [str(e)]
-            all_negative_prompts = [str(e)]
+                if disable_negative_prompt:
+                    generator_builder.disable_prompt_magic()
+                    negative_generator = generator_builder.create_generator()
+                else:
+                    negative_generator = generator
 
-        updated_count = len(all_prompts)
+                current_prompts, current_negative_prompts = generate_prompts(
+                    prompt_generator=generator,
+                    negative_prompt_generator=negative_generator,
+                    prompt=original_p_template,
+                    negative_prompt=original_negative_prompts_list[i] if i < len(original_negative_prompts_list) else None,
+                    num_prompts=num_images_per_template,
+                    seeds=all_seeds_for_generators[i * (num_images_per_template if num_images_per_template is not None else 1) : (i + 1) * (num_images_per_template if num_images_per_template is not None else 1)] if all_seeds_for_generators else None,
+                )
+                all_generated_prompts.extend(current_prompts)
+                all_generated_negative_prompts.extend(current_negative_prompts)
+
+                if hr_fix_enabled:
+                    current_hr_prompts = _get_hr_fix_prompts(
+                        current_prompts,
+                        original_hr_prompts_list[i] if i < len(original_hr_prompts_list) else original_p_template,
+                        original_p_template,
+                    )
+                    current_hr_negative_prompts = _get_hr_fix_prompts(
+                        current_negative_prompts,
+                        original_negative_hr_prompts_list[i] if i < len(original_negative_hr_prompts_list) else original_negative_prompts_list[i],
+                        original_negative_prompts_list[i],
+                    )
+                    all_generated_hr_prompts.extend(current_hr_prompts)
+                    all_generated_hr_negative_prompts.extend(current_hr_negative_prompts)
+
+            except GeneratorException as e:
+                logger.exception(e)
+                all_generated_prompts.append(str(e))
+                all_generated_negative_prompts.append(str(e))
+                if hr_fix_enabled:
+                    all_generated_hr_prompts.append(str(e))
+                    all_generated_hr_negative_prompts.append(str(e))
+
+        updated_count = len(all_generated_prompts)
         p.n_iter = math.ceil(updated_count / p.batch_size)
 
-        if num_images != updated_count:
+        if total_num_prompts != updated_count:
             p.all_seeds, p.all_subseeds = get_seeds(
                 p,
                 updated_count,
@@ -509,41 +554,33 @@ class Script(scripts.Script):
             )
 
         self._prompt_writer.set_data(
-            positive_template=original_prompt,
-            negative_template=original_negative_prompt,
-            positive_prompts=all_prompts,
-            negative_prompts=all_negative_prompts,
+            positive_template=original_prompts_list[0] if original_prompts_list else "",
+            negative_template=original_negative_prompts_list[0] if original_negative_prompts_list else "",
+            positive_prompts=all_generated_prompts,
+            negative_prompts=all_generated_negative_prompts,
         )
 
         if opts.dp_write_raw_template:
             params = p.extra_generation_params
-            if original_prompt:
-                params["Template"] = original_prompt
-            if original_negative_prompt:
-                params["Negative Template"] = original_negative_prompt
+            if original_prompts_list:
+                params["Template"] = original_prompts_list[0]
+            if original_negative_prompts_list:
+                params["Negative Template"] = original_negative_prompts_list[0]
 
-        p.all_prompts = all_prompts
-        p.all_negative_prompts = all_negative_prompts
+        p.all_prompts = all_generated_prompts
+        p.all_negative_prompts = all_generated_negative_prompts
         if no_image_generation:
             logger.debug("No image generation requested - exiting")
             # Need a minimum of batch size images to avoid errors
             p.batch_size = 1
-            p.all_prompts = all_prompts[0:1]
+            p.all_prompts = all_generated_prompts[0:1]
 
-        p.prompt_for_display = original_prompt
-        p.prompt = original_prompt
+        p.prompt_for_display = original_prompts_list[0] if original_prompts_list else ""
+        p.prompt = original_prompts_list[0] if original_prompts_list else ""
 
         if hr_fix_enabled:
-            p.all_hr_prompts = _get_hr_fix_prompts(
-                all_prompts,
-                original_hr_prompt,
-                original_prompt,
-            )
-            p.all_hr_negative_prompts = _get_hr_fix_prompts(
-                all_negative_prompts,
-                original_negative_hr_prompt,
-                original_negative_prompt,
-            )
+            p.all_hr_prompts = all_generated_hr_prompts
+            p.all_hr_negative_prompts = all_generated_hr_negative_prompts
 
 
 callbacks.register_settings()  # Settings need to be registered early, see #754.
