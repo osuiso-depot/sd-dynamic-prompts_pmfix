@@ -1,6 +1,7 @@
 # sd-dynamic-prompts_pmfix
 * このforkバージョンでは、Stable Diffusion Dynamic Prompts extension使用時に「Prompt matrix」でエラーが出ないように修正しました。
-* prompt matrix非使用時のwildcard処理は問題ないはずですが、内部組み合わせ生成処理が機能しなくなっている可能性があります。
+* 内部組み合わせ生成処理が機能しなくなっている可能性があります。
+* 現在、通常のバッチ処理が機能しません(1固定)。
 
 ## Dynamic Prompts and Random Seeds
 
